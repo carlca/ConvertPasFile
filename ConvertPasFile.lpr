@@ -276,6 +276,8 @@ var
         Result := line;
       end;
     end;
+    if (Pos('{$ifdef', LowerCase(line)) > 0) then
+      Result := UpperCase(line);
   end;
 
   function IsBlankLineNeeded(Index: integer; line: string): boolean;
