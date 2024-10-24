@@ -14,6 +14,10 @@ const
 type
   TStringArray = array of string;
 
+procedure Pass;
+begin
+end;
+
 function CleanComment(const comment: string): string;
 begin
   Result := StringReplace(comment, '//*', '//', [rfReplaceAll]);
@@ -160,20 +164,6 @@ var
     end;
   end;
 
-  function ApplyPostAICompilerDirectiveFix(line: string): string;
-  begin
-    Result := line;
-    if (Pos('{$', line) > 0) then
-    begin
-      if line[Length(line)] = '}' then
-      begin
-        SetLength(line, Length(line) - 1);
-        line := Trim(line) + '}';
-        Result := line;
-      end;
-    end;
-  end;
-
 begin
   inputFile := TStringList.Create;
   outputFile := TStringList.Create;
@@ -255,9 +245,8 @@ begin
       // Standardize parameter names
       line := StandardizeCase(line);
 
-      line := ApplyPostAICompilerDirectiveFix(line);
-
       outputFile.Add(line);
+
       lastLineWasBlank := (Trim(line) = '');
     end;
 
@@ -268,17 +257,111 @@ begin
   end;
 end;
 
+procedure ApplyPostAIFixes(outputFileName: string);
+var
+  i: integer;
+  outputFile: TStringList;
+  fixedFile: TStringList;
+  line: string;
+
+  function ApplyCompilerDirectiveFix(line: string): string;
+  begin
+    Result := line;
+    if (Pos('{$', line) > 0) then
+    begin
+      if line[Length(line)] = '}' then
+      begin
+        SetLength(line, Length(line) - 1);
+        line := Trim(line) + '}';
+        Result := line;
+      end;
+    end;
+  end;
+
+  function IsBlankLineNeeded(Index: integer; line: string): boolean;
+  var
+    NextIndex: integer = -1;
+    PrevIndex: integer = -1;
+    NextLine: string;
+    PrevLine: string;
+  begin
+    Result := true;
+    if Index < outputFile.Count then
+      NextIndex := Succ(Index);
+    if Index > 0 then
+      PrevIndex := Pred(Index);
+    if (NextIndex >= 0) and (PrevIndex >= 0) then
+    begin
+      NextLine := outputFile[NextIndex];
+      PrevLine := outputFile[PrevIndex];
+      // for blank between comment and procedure/function/constructor
+      if Pos('//', Trim(PrevLine)) > 0 then
+      begin
+        if (Pos('function', Trim(NextLine)) > 0)
+        or (Pos('procedure', Trim(NextLine)) > 0)
+        or (Pos('constructor', Trim(NextLine)) > 0) then
+        begin
+          Result := false;
+          Exit;
+        end;
+      end;
+      // for blank between constructor and begin
+      if Pos('constructor', Trim(PrevLine)) > 0 then
+      begin
+        if Pos('begin', Trim(NextLine)) > 0 then
+        begin
+          Result := false;
+          Exit;
+        end;
+      end;
+    end;
+  end;
+
+begin
+  outputFile := TStringList.Create;
+  fixedFile := TStringList.Create;
+  try
+    outputFile.LoadFromFile(outputFileName);
+    for i := 0 to outputFile.Count - 1 do
+    begin
+      line := outputFile[i];
+
+      line := ApplyCompilerDirectiveFix(line);
+
+      if (Trim(line) <> '') then
+        fixedFile.Add(line)
+      else
+        if (Trim(line) = '') and IsBlankLineNeeded(i, line) then
+        begin
+          fixedFile.Add(line)
+        end;
+    end;
+    fixedFile.SaveToFile(outputFileName);
+  finally
+    outputFile.Free;
+    fixedFile.Free;
+  end;
+end;
+
 // Run with: ../ConvertPasFile/ConvertPasFile ./asoundseq_dynamic.pas ./caasoundseq_dynamic.pas
 
+var
+  inputFileName, outputFileName: string;
 begin
   if ParamCount < 2 then
   begin
-    ConvertFile('/users/carlcaulkett/Code/fpc/asound/asoundseq_dynamic.pas', '/users/carlcaulkett/Code/fpc/asound/caasoundseq_dynamic.pas');
+    inputFileName := '/users/carlcaulkett/Code/fpc/asound/asoundseq_dynamic.pas';
+    outputFileName := '/users/carlcaulkett/Code/fpc/asound/caasoundseq_dynamic.pas';
+    ConvertFile(inputFileName, outputFileName);
+    ApplyPostAIFixes(outputFileName);
   end
   else
   begin
     try
-      ConvertFile(ParamStr(1), ParamStr(2));
+      inputFileName := ParamStr(1);
+      outputFileName := ParamStr(2);
+      ConvertFile(inputFileName, outputFileName);
+      ApplyPostAIFixes(outputFileName);
       WriteLn('Conversion completed successfully.');
     except
       on E: Exception do
