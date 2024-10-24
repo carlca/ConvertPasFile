@@ -160,6 +160,20 @@ var
     end;
   end;
 
+  function ApplyPostAICompilerDirectiveFix(line: string): string;
+  begin
+    Result := line;
+    if (Pos('{$', line) > 0) then
+    begin
+      if line[Length(line)] = '}' then
+      begin
+        SetLength(line, Length(line) - 1);
+        line := Trim(line) + '}';
+        Result := line;
+      end;
+    end;
+  end;
+
 begin
   inputFile := TStringList.Create;
   outputFile := TStringList.Create;
@@ -240,6 +254,8 @@ begin
 
       // Standardize parameter names
       line := StandardizeCase(line);
+
+      line := ApplyPostAICompilerDirectiveFix(line);
 
       outputFile.Add(line);
       lastLineWasBlank := (Trim(line) = '');
